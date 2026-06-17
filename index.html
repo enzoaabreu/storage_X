@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Materiais e Entregas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carrega o cliente oficial do Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        sky: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #bae6fd;
+            border-radius: 4px;
+        }
+        
+        @media print {
+            body { background: white; color: black; }
+            .no-print { display: none !important; }
+            .print-area { display: block !important; width: 100% !important; box-shadow: none !important; padding: 0 !important; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 min-h-screen flex flex-col">
+
+    <!-- Indicador de Carregamento Nuvem -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-white/80 z-50 flex flex-col items-center justify-center font-medium text-sky-600 gap-2">
+        <svg class="animate-spin h-8 w-8 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+        Sincronizando com a Nuvem...
+    </div>
+
+    <header class="bg-white border-b border-sky-100 py-4 px-6 flex justify-between items-center no-print">
+        <div class="flex items-center gap-3">
+            <div class="p-2 bg-sky-100 text-sky-600 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-900">LogiSky</h1>
+                <p class="text-xs text-gray-500">Gestão de Pedidos e Recebimentos</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3 bg-sky-50 p-2 rounded-xl border border-sky-100">
+            <label class="text-xs font-semibold text-sky-700 uppercase tracking-wider pl-2">Pedido Ativo:</label>
+            <select id="globalOrderSelect" onchange="switchOrder(this.value)" class="bg-white border border-sky-200 text-gray-700 py-1.5 px-4 rounded-lg font-medium text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer">
+            </select>
+        </div>
+    </header>
+
+    <nav class="bg-white border-b border-gray-200 px-6 no-print">
+        <div class="flex gap-6">
+            <button onclick="switchTab('dashboard')" id="btn-dashboard" class="tab-btn py-4 font-medium text-sm border-b-2 border-sky-500 text-sky-600 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2v-4zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4z" /></svg>
+                Dashboard Geral
+            </button>
+            <button onclick="switchTab('entregas')" id="btn-entregas" class="tab-btn py-4 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-sky-600 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Registrar Chegada
+            </button>
+            <button onclick="switchTab('gerenciar')" id="btn-gerenciar" class="tab-btn py-4 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-sky-600 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                Configurar/Editar Pedidos
+            </button>
+        </div>
+    </nav>
+
+    <main class="flex-1 p-6 max-w-7xl w-full mx-auto">
+
+        <section id="tab-dashboard" class="tab-content print-area">
+            <div class="flex justify-between items-center mb-6 no-print">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900">Status do Pedido Atual</h2>
+                    <p class="text-sm text-gray-500">Acompanhamento de saldo devedor e conferência.</p>
+                </div>
+                <button onclick="window.print()" class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm shadow-sky-100 transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                    Imprimir Dashboard
+                </button>
+            </div>
+
+            <div class="hidden print:block mb-6 border-b pb-4">
+                <h1 class="text-2xl font-bold text-black">Relatório de Dashboard - LogiSky</h1>
+                <p class="text-sm text-gray-600" id="print-order-title">Pedido: -</p>
+                <p class="text-xs text-gray-500">Gerado em: <span id="print-date"></span></p>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-sky-50/70 border-b border-sky-100 text-sky-700 text-xs uppercase tracking-wider font-semibold">
+                                <th class="py-4 px-6">Nome do Material</th>
+                                <th class="py-4 px-6 text-right">Qtd. Solicitada</th>
+                                <th class="py-4 px-6 text-right">Qtd. Entregue</th>
+                                <th class="py-4 px-6 text-right">Saldo Devedor</th>
+                                <th class="py-4 px-6 text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dashboardTableBody" class="divide-y divide-gray-100 text-sm">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-entregas" class="tab-content hidden print-area">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm h-fit no-print">
+                    <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <span class="w-2 h-4 bg-sky-500 rounded-full"></span>
+                        Inserir Entrega Parcial
+                    </h3>
+                    <form id="deliveryForm" onsubmit="handleDeliverySubmit(event)" class="space-y-4">
+                        <input type="hidden" id="editDeliveryIndex" value="">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Selecionar Material</label>
+                            <select id="deliveryMaterialSelect" required class="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Quantidade Entregue</label>
+                            <input type="number" id="deliveryQty" min="1" required class="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Data da Entrega</label>
+                            <input type="date" id="deliveryDate" required class="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        </div>
+                        <div class="flex gap-2 pt-2">
+                            <button type="submit" id="btnSubmitDelivery" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-medium py-2 px-4 rounded-xl text-sm transition-all shadow-sm shadow-sky-100">
+                                Salvar Entrega
+                            </button>
+                            <button type="button" id="btnCancelDeliveryEdit" onclick="resetDeliveryForm()" class="hidden bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium py-2 px-3 rounded-xl text-sm transition-all">
+                                Cancelar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="lg:col-span-2">
+                    <div class="flex justify-between items-center mb-4 no-print">
+                        <div>
+                            <h3 class="text-base font-bold text-gray-900">Histórico de Chegadas</h3>
+                            <p class="text-xs text-gray-500">Entregas parceladas associadas a este pedido.</p>
+                        </div>
+                        <button onclick="window.print()" class="border border-sky-200 text-sky-600 bg-sky-50 hover:bg-sky-100 px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                            Imprimir Chegadas
+                        </button>
+                    </div>
+
+                    <div class="hidden print:block mb-4 border-b pb-2">
+                        <h2 class="text-xl font-bold text-black">Histórico de Recebimento de Cargas</h2>
+                        <p class="text-sm text-gray-600" id="print-order-title-deliveries">Pedido: -</p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto custom-scrollbar">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-gray-50 border-b border-gray-100 text-gray-600 text-xs uppercase tracking-wider font-semibold">
+                                        <th class="py-3 px-6">Material</th>
+                                        <th class="py-3 px-6 text-right">Qtd. Chegou</th>
+                                        <th class="py-3 px-6 text-center">Data Chegada</th>
+                                        <th class="py-3 px-6 text-center no-print">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody" class="divide-y divide-gray-100 text-sm">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <section id="tab-gerenciar" class="tab-content hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm h-fit">
+                    <h3 class="text-base font-bold text-gray-900 mb-2 flex items-center gap-2">
+                        <span class="w-2 h-4 bg-sky-500 rounded-full"></span>
+                        Configuração de Pedido
+                    </h3>
+                    <p class="text-xs text-gray-500 mb-4">Adicione ou substitua itens inteiros do pedido selecionado abaixo.</p>
+                    
+                    <form id="orderForm" onsubmit="handleOrderSubmit(event)" class="space-y-4">
+                        <input type="hidden" id="editMaterialIndex" value="">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Nome do Material</label>
+                            <input type="text" id="orderMaterialName" required placeholder="Ex: Cimento CP II" class="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Quantidade Total Solicitada</label>
+                            <input type="number" id="orderMaterialQty" min="1" required placeholder="Ex: 150" class="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        </div>
+                        <div class="flex gap-2 pt-2">
+                            <button type="submit" id="btnSubmitMaterial" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-medium py-2 px-4 rounded-xl text-sm transition-all">
+                                Adicionar / Atualizar Item
+                            </button>
+                            <button type="button" id="btnCancelMaterialEdit" onclick="resetOrderForm()" class="hidden bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium py-2 px-3 rounded-xl text-sm transition-all">
+                                Cancelar
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <div class="mt-6 pt-6 border-t border-gray-100">
+                        <button onclick="createNewBlankOrder()" class="w-full border border-dashed border-sky-300 text-sky-600 bg-sky-50 hover:bg-sky-100 font-medium py-2.5 px-4 rounded-xl text-sm transition-all flex items-center justify-center gap-2">
+                            + Criar um Novo Pedido em Branco
+                        </button>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-2">
+                    <div class="mb-4">
+                        <h3 class="text-base font-bold text-gray-900">Estrutura Inicial do Pedido</h3>
+                        <p class="text-xs text-gray-500">Mude as quantidades bases contratadas aqui. (Ajustar aqui altera o saldo devedor automaticamente).</p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-gray-100 text-gray-600 text-xs uppercase tracking-wider font-semibold">
+                                    <th class="py-3 px-6">Material Cadastrado</th>
+                                    <th class="py-3 px-6 text-right">Qtd. Contratada Original</th>
+                                    <th class="py-3 px-6 text-center">Ações de Estrutura</th>
+                                </tr>
+                            </thead>
+                            <tbody id="manageTableBody" class="divide-y divide-gray-100 text-sm">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-white border-t border-gray-100 py-4 px-6 text-center text-xs text-gray-400 no-print">
+        LogiSky Dashboard • Banco de Dados em Tempo Real Nuvem
+    </footer>
+
+    <script>
+        // MECANISMO DE PROTEÇÃO CONTRA WEB-SCRAPING NO GITHUB
+        // Pede os dados uma única vez por sessão ao carregar a página e guarda em memória temporária.
+        let SUPABASE_URL = sessionStorage.getItem('SS_S_URL');
+        let SUPABASE_KEY = sessionStorage.getItem('SS_S_KEY');
+
+        if (!SUPABASE_URL || !SUPABASE_KEY) {
+            alert("🔒 Ambiente Seguro LogiSky\nPor favor, insira as credenciais de sincronização a seguir.");
+            SUPABASE_URL = prompt("Digite a URL do seu Supabase (ex: https://xxxx.supabase.co):");
+            SUPABASE_KEY = prompt("Digite a sua Chave ANON do Supabase:");
+            
+            if (SUPABASE_URL && SUPABASE_KEY) {
+                sessionStorage.setItem('SS_S_URL', SUPABASE_URL.trim());
+                sessionStorage.setItem('SS_S_KEY', SUPABASE_KEY.trim());
+            } else {
+                alert("Credenciais inválidas. A página não funcionará corretamente.");
+            }
+        }
+
+        // Inicia o cliente Supabase de maneira dinâmica com o que foi coletado
+        let _supabase;
+        try {
+            _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        } catch(e) {
+            console.error("Falha ao inicializar cliente do banco.");
+        }
+
+        // Dados padrão (Mock) usados apenas na primeira vez se o banco estiver 100% vazio
+        const defaultData = {
+            activeOrderId: "PED-1024",
+            orders: {
+                "PED-1024": {
+                    name: "Pedido #1024 - Fundação Centro",
+                    materials: [
+                        { id: "mat-1", name: "Cimento Votoran CP II (Saco)", requested: 200 },
+                        { id: "mat-2", name: "Aço CA-50 10mm (Barra)", requested: 85 },
+                        { id: "mat-3", name: "Areia Grossa (m³)", requested: 40 },
+                        { id: "mat-4", name: "Pedra Brita N° 1 (m³)", requested: 30 }
+                    ],
+                    deliveries: [
+                        { id: "del-1", materialId: "mat-1", qty: 50, date: "2026-06-01" },
+                        { id: "del-2", materialId: "mat-1", qty: 70, date: "2026-06-05" },
+                        { id: "del-3", materialId: "mat-2", qty: 40, date: "2026-06-03" },
+                        { id: "del-4", materialId: "mat-3", qty: 20, date: "2026-06-08" }
+                    ]
+                }
+            }
+        };
+
+        let appData = { activeOrderId: "", orders: {} };
+        let dbRecordId = null;
+
+        const loadingOverlay = document.getElementById('loadingOverlay');
+
+        function showLoading(show) {
+            if (show) loadingOverlay.classList.remove('hidden');
+            else loadingOverlay.classList.add('hidden');
+        }
+
+        async function loadDataFromSupabase() {
+            if(!_supabase) return;
+            showLoading(true);
+            try {
+                const { data, error } = await _supabase
+                    .from('logisky_data')
+                    .select('*')
+                    .limit(1);
+
+                if (error) throw error;
+
+                if (data && data.length > 0) {
+                    dbRecordId = data[0].id;
+                    appData = data[0].dados;
+                } else {
+                    const { data: insertData, error: insertError } = await _supabase
+                        .from('logisky_data')
+                        .insert([{ dados: defaultData }])
+                        .select();
+                    
+                    if (insertError) throw insertError;
+                    
+                    dbRecordId = insertData[0].id;
+                    appData = insertData[0].dados;
+                }
+
+                updateOrderSelects();
+                renderAll();
+            } catch (err) {
+                console.error("Erro ao carregar do Supabase:", err.message);
+                alert("Erro de autenticação na nuvem. Limpe o histórico ou reabra a aba para digitar credenciais corretas.");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function saveData() {
+            if (!dbRecordId || !_supabase) return;
+            showLoading(true);
+            try {
+                const { error } = await _supabase
+                    .from('logisky_data')
+                    .update({ dados: appData })
+                    .eq('id', dbRecordId);
+
+                if (error) throw error;
+            } catch (err) {
+                console.error("Erro ao salvar no Supabase:", err.message);
+                alert("Não foi possível salvar os dados na nuvem!");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('print-date').innerText = new Date().toLocaleDateString('pt-BR');
+            if(SUPABASE_URL && SUPABASE_KEY) {
+                loadDataFromSupabase();
+            } else {
+                showLoading(false);
+            }
+        });
+
+        function getActiveOrder() {
+            return appData.orders[appData.activeOrderId] || { name: "", materials: [], deliveries: [] };
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('border-sky-500', 'text-sky-600');
+                el.classList.add('border-transparent', 'text-gray-500');
+            });
+
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            document.getElementById(`btn-${tabId}`).classList.add('border-sky-500', 'text-sky-600');
+            document.getElementById(`btn-${tabId}`).classList.remove('border-transparent', 'text-gray-500');
+        }
+
+        function updateOrderSelects() {
+            const select = document.getElementById('globalOrderSelect');
+            select.innerHTML = '';
+            Object.keys(appData.orders).forEach(id => {
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.innerText = appData.orders[id].name;
+                opt.selected = id === appData.activeOrderId;
+                select.appendChild(opt);
+            });
+        }
+
+        function switchOrder(orderId) {
+            appData.activeOrderId = orderId;
+            saveData();
+            resetDeliveryForm();
+            resetOrderForm();
+            renderAll();
+        }
+
+        function createNewBlankOrder() {
+            const newId = "PED-" + Math.floor(1000 + Math.random() * 9000);
+            appData.orders[newId] = {
+                name: `Pedido #${newId} - Novo Registro`,
+                materials: [],
+                deliveries: []
+            };
+            appData.activeOrderId = newId;
+            saveData();
+            updateOrderSelects();
+            renderAll();
+            switchTab('gerenciar');
+        }
+
+        function renderAll() {
+            const order = getActiveOrder();
+            if(!order.name) return;
+            
+            document.getElementById('print-order-title').innerText = "Pedido Ativo: " + order.name;
+            document.getElementById('print-order-title-deliveries').innerText = "Pedido Ativo: " + order.name;
+
+            const materialMap = {};
+            order.materials.forEach(m => {
+                materialMap[m.id] = { ...m, delivered: 0 };
+            });
+
+            order.deliveries.forEach(d => {
+                if (materialMap[d.materialId]) {
+                    materialMap[d.materialId].delivered += parseInt(d.qty);
+                }
+            });
+
+            const dbTableBody = document.getElementById('dashboardTableBody');
+            dbTableBody.innerHTML = '';
+            
+            if (order.materials.length === 0) {
+                dbTableBody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-400">Nenhum material cadastrado neste pedido. Vá na aba "Configurar Pedidos".</td></tr>`;
+            }
+
+            Object.values(materialMap).forEach(m => {
+                const pending = m.requested - m.delivered;
+                const balance = pending < 0 ? 0 : pending; 
+                
+                let statusBadge = '';
+                if (m.delivered === 0) {
+                    statusBadge = `<span class="bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full text-xs font-medium">Pendente</span>`;
+                } else if (m.delivered >= m.requested) {
+                    statusBadge = `<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-xs font-medium">Concluído</span>`;
+                } else {
+                    statusBadge = `<span class="bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 rounded-full text-xs font-medium">Parcial</span>`;
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50/50 transition-colors";
+                tr.innerHTML = `
+                    <td class="py-4 px-6 font-medium text-gray-900">${m.name}</td>
+                    <td class="py-4 px-6 text-right font-mono text-gray-600">${m.requested}</td>
+                    <td class="py-4 px-6 text-right font-mono text-sky-600 font-semibold">${m.delivered}</td>
+                    <td class="py-4 px-6 text-right font-mono ${balance > 0 ? 'text-amber-600 font-semibold' : 'text-gray-400'}">${balance}</td>
+                    <td class="py-4 px-6 text-center">${statusBadge}</td>
+                `;
+                dbTableBody.appendChild(tr);
+            });
+
+            const delSelect = document.getElementById('deliveryMaterialSelect');
+            delSelect.innerHTML = '<option value="">-- Selecione o Material --</option>';
+            order.materials.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.innerText = m.name;
+                delSelect.appendChild(opt);
+            });
+
+            const historyTableBody = document.getElementById('historyTableBody');
+            historyTableBody.innerHTML = '';
+            
+            if (order.deliveries.length === 0) {
+                historyTableBody.innerHTML = `<tr><td colspan="4" class="py-8 text-center text-gray-400">Nenhum recebimento registrado para este pedido.</td></tr>`;
+            }
+
+            order.deliveries.forEach((d, index) => {
+                const matName = materialMap[d.materialId] ? materialMap[d.materialId].name : 'Material Excluído';
+                const formattedDate = d.date.split('-').reverse().join('/');
+                
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50/50 transition-colors";
+                tr.innerHTML = `
+                    <td class="py-3 px-6 font-medium text-gray-900">${matName}</td>
+                    <td class="py-3 px-6 text-right font-mono font-semibold text-gray-700">${d.qty}</td>
+                    <td class="py-3 px-6 text-center text-gray-500">${formattedDate}</td>
+                    <td class="py-3 px-6 text-center no-print">
+                        <div class="flex justify-center gap-2">
+                            <button onclick="editDelivery(${index})" class="text-sky-600 hover:text-sky-800 p-1 rounded hover:bg-sky-50 transition-all" title="Editar Entrada">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            </button>
+                            <button onclick="deleteDelivery(${index})" class="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-all" title="Deletar">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-16v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                historyTableBody.appendChild(tr);
+            });
+
+            const manageTableBody = document.getElementById('manageTableBody');
+            manageTableBody.innerHTML = '';
+            
+            if (order.materials.length === 0) {
+                manageTableBody.innerHTML = `<tr><td colspan="3" class="py-8 text-center text-gray-400">Nenhum item estruturado. Insira o primeiro ao lado.</td></tr>`;
+            }
+
+            order.materials.forEach((m, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50/50 transition-colors";
+                tr.innerHTML = `
+                    <td class="py-3 px-6 font-medium text-gray-900">${m.name}</td>
+                    <td class="py-3 px-6 text-right font-mono">${m.requested}</td>
+                    <td class="py-3 px-6 text-center">
+                        <div class="flex justify-center gap-2">
+                            <button onclick="editMaterial(${index})" class="bg-gray-50 text-sky-600 hover:bg-sky-100 px-2.5 py-1 rounded-lg text-xs font-medium transition-all">Editar Item</button>
+                            <button onclick="deleteMaterial('${m.id}')" class="bg-gray-50 text-red-500 hover:bg-red-100 px-2.5 py-1 rounded-lg text-xs font-medium transition-all">Remover</button>
+                        </div>
+                    </td>
+                `;
+                manageTableBody.appendChild(tr);
+            });
+        }
+
+        function handleDeliverySubmit(e) {
+            e.preventDefault();
+            const order = getActiveOrder();
+            const matId = document.getElementById('deliveryMaterialSelect').value;
+            const qty = parseInt(document.getElementById('deliveryQty').value);
+            const date = document.getElementById('deliveryDate').value;
+            const editIdx = document.getElementById('editDeliveryIndex').value;
+
+            if (editIdx === "") {
+                order.deliveries.push({ id: "del-" + Date.now(), materialId: matId, qty, date });
+            } else {
+                order.deliveries[parseInt(editIdx)].materialId = matId;
+                order.deliveries[parseInt(editIdx)].qty = qty;
+                order.deliveries[parseInt(editIdx)].date = date;
+            }
+
+            saveData();
+            resetDeliveryForm();
+            renderAll();
+        }
+
+        function editDelivery(index) {
+            const delivery = getActiveOrder().deliveries[index];
+            document.getElementById('editDeliveryIndex').value = index;
+            document.getElementById('deliveryMaterialSelect').value = delivery.materialId;
+            document.getElementById('deliveryQty').value = delivery.qty;
+            document.getElementById('deliveryDate').value = delivery.date;
+            
+            document.getElementById('btnSubmitDelivery').innerText = "Atualizar Correção";
+            document.getElementById('btnCancelDeliveryEdit').classList.remove('hidden');
+        }
+
+        function deleteDelivery(index) {
+            if(confirm("Deseja apagar este registro de chegada?")) {
+                getActiveOrder().deliveries.splice(index, 1);
+                saveData();
+                renderAll();
+            }
+        }
+
+        function resetDeliveryForm() {
+            document.getElementById('deliveryForm').reset();
+            document.getElementById('editDeliveryIndex').value = "";
+            document.getElementById('btnSubmitDelivery').innerText = "Salvar Entrega";
+            document.getElementById('btnCancelDeliveryEdit').classList.add('hidden');
+        }
+
+        function handleOrderSubmit(e) {
+            e.preventDefault();
+            const order = getActiveOrder();
+            const name = document.getElementById('orderMaterialName').value;
+            const qty = parseInt(document.getElementById('orderMaterialQty').value);
+            const editIdx = document.getElementById('editMaterialIndex').value;
+
+            if (editIdx === "") {
+                order.materials.push({ id: "mat-" + Date.now(), name, requested: qty });
+            } else {
+                order.materials[parseInt(editIdx)].name = name;
+                order.materials[parseInt(editIdx)].requested = qty;
+            }
+
+            saveData();
+            resetOrderForm();
+            renderAll();
+        }
+
+        function editMaterial(index) {
+            const material = getActiveOrder().materials[index];
+            document.getElementById('editMaterialIndex').value = index;
+            document.getElementById('orderMaterialName').value = material.name;
+            document.getElementById('orderMaterialQty').value = material.requested;
+
+            document.getElementById('btnSubmitMaterial').innerText = "Atualizar Item";
+            document.getElementById('btnCancelMaterialEdit').classList.remove('hidden');
+        }
+
+        function deleteMaterial(matId) {
+            if (confirm("Ao remover este material, todos os recebimentos vinculados a ele também sumirão do cálculo. Continuar?")) {
+                const order = getActiveOrder();
+                order.materials = order.materials.filter(m => m.id !== matId);
+                order.deliveries = order.deliveries.filter(d => d.materialId !== matId);
+                saveData();
+                renderAll();
+            }
+        }
+
+        function resetOrderForm() {
+            document.getElementById('orderForm').reset();
+            document.getElementById('editMaterialIndex').value = "";
+            document.getElementById('btnSubmitMaterial').innerText = "Adicionar / Atualizar Item";
+            document.getElementById('btnCancelMaterialEdit').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
